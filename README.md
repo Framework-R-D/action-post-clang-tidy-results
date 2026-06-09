@@ -5,7 +5,7 @@
 ## Usage
 
 ```yaml
-- uses: Framework-R-D/action-post-clang-tidy-results@v1  # pin to commit SHA in production
+- uses: Framework-R-D/action-post-clang-tidy-results@ebe244ff1f0460b5175b6c9ef17da05164b71b29 # v1
   with:
     input-name: value
 ```
