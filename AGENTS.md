@@ -14,8 +14,8 @@ extracted for standalone reuse.
 
 | Name | Description | Required | Default |
 | ---- | ----------- | -------- | ------- |
-| `build-path` | Path where build artifacts are located | True |  |
-| `pr-number` | PR number for posting comments | False |  |
+| `build-path` | Path where build artifacts are located | True | |
+| `pr-number` | PR number for posting comments | False | |
 | `post-summary` | Whether to post a summary comment (true/false) | False | false |
 
 **Outputs:**
