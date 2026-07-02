@@ -93,13 +93,29 @@ runs:
 
           const hasNewIssues = newIssueLines.length > 0;
 
+          // Sections with more items than this are wrapped in a collapsible
+          // <details> block so that PR comments with many issues stay
+          // scannable by default.
+          const FOLD_THRESHOLD = 10;
+
+          function renderList(lines, summary) {
+            const body = lines.join('\n') + '\n';
+            if (lines.length <= FOLD_THRESHOLD) {
+              return body;
+            }
+            // GFM requires a blank line after <summary> for the enclosed
+            // Markdown to render correctly.
+            return `<details>\n<summary>${summary}</summary>\n\n${body}\n</details>\n`;
+          }
+
           if (totalIssues > 0 || hasNewIssues) {
             let body = '## Clang-Tidy Check Results\n\n';
 
             if (hasNewIssues) {
               body += `**${newIssueLines.length} new issue(s) introduced by this patch** (${totalIssues} total).\n\n`;
               body += '### New issues on modified lines:\n\n';
-              newIssueLines.forEach(line => { body += `- \`${line}\`\n`; });
+              const newIssueBullets = newIssueLines.map(line => `- \`${line}\``);
+              body += renderList(newIssueBullets, `${newIssueLines.length} new issue(s)`);
               body += '\n';
             } else {
               body += `Found ${totalIssues} issue(s); none are newly introduced by this patch.\n\n`;
@@ -107,8 +123,9 @@ runs:
 
             if (Object.keys(checkCounts).length > 0) {
               const sorted = Object.entries(checkCounts).sort((a, b) => b[1] - a[1]);
+              const checkBullets = sorted.map(([check, count]) => `- **${check}**: ${count}`);
               body += '### All issues by check:\n\n';
-              sorted.forEach(([check, count]) => { body += `- **${check}**: ${count}\n`; });
+              body += renderList(checkBullets, `${sorted.length} check(s)`);
               body += '\n';
             }
 
