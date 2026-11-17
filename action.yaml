@@ -20,19 +20,50 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Create isolated report directory
+      id: report_dir
+      shell: bash
+      run: |
+        path=$(mktemp -d "$RUNNER_TEMP/clang-tidy-report.XXXXXX")
+        printf 'path=%s\n' "$path" >> "$GITHUB_OUTPUT"
+        printf 'python=%s\n' "$(command -v python3)" >> "$GITHUB_OUTPUT"
     - name: Download artifacts
+      id: download
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
-        pattern: clang-tidy-*
-        merge-multiple: true
+        name: clang-tidy-check
+        path: ${{ steps.report_dir.outputs.path }}
       continue-on-error: true
 
     - name: Check if artifacts exist
       id: check
       shell: bash
       env:
-        INPUT_BUILD_PATH: ${{ inputs.build-path }}
+        INPUT_BUILD_PATH: ${{ steps.report_dir.outputs.path }}
+        DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+        INPUT_PR_NUMBER: ${{ inputs.pr-number }}
       run: |
+        if [ "$DOWNLOAD_OUTCOME" != 'success' ]; then
+          echo 'has_fixes=false' >> "$GITHUB_OUTPUT"
+          echo 'has_summary_content=false' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        python3 - <<'PY'
+        import os
+        import re
+        import stat
+        from pathlib import Path
+        number = os.environ['INPUT_PR_NUMBER']
+        if number and not re.fullmatch(r'[1-9][0-9]*', number):
+            raise SystemExit('Invalid PR number')
+        root = Path(os.environ['INPUT_BUILD_PATH'])
+        for name in ['clang-tidy-fixes.yaml', 'clang-tidy-new-issues.txt']:
+            path = root / name
+            if path.exists() or path.is_symlink():
+                metadata = path.lstat()
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 2_000_000:
+                    raise SystemExit('Report must be a bounded regular file')
+        PY
         if [ -f "${INPUT_BUILD_PATH}/clang-tidy-fixes.yaml" ]; then
           echo "has_fixes=true" >> "$GITHUB_OUTPUT"
         else
@@ -49,16 +80,23 @@ runs:
       if: steps.check.outputs.has_fixes == 'true' && inputs.pr-number != ''
       continue-on-error: true # platisd/clang-tidy-pr-comments exits non-zero when issues are found; that is informational, not a CI failure
       uses: platisd/clang-tidy-pr-comments@28cfb84edafa771c044bde7e4a2a3fae57463818 # v1.8.0
+      env:
+        PIP_CONSTRAINT: ${{ github.action_path }}/.github/comment-tools/requirements.txt
+        PIP_CONFIG_FILE: /dev/null
+        PIP_ONLY_BINARY: ":all:"
+        PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        PYTHONNOUSERSITE: "1"
       with:
-        clang_tidy_fixes: ${{ inputs.build-path }}/clang-tidy-fixes.yaml
+        clang_tidy_fixes: ${{ steps.report_dir.outputs.path }}/clang-tidy-fixes.yaml
         github_token: ${{ github.token }}
         pull_request_id: ${{ inputs.pr-number }}
+        python_path: ${{ steps.report_dir.outputs.python }}
 
     - name: Post summary comment
       if: steps.check.outputs.has_summary_content == 'true' && inputs.post-summary == 'true' && inputs.pr-number != ''
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       env:
-        INPUT_BUILD_PATH: ${{ inputs.build-path }}
+        INPUT_BUILD_PATH: ${{ steps.report_dir.outputs.path }}
         INPUT_PR_NUMBER: ${{ inputs.pr-number }}
       with:
         script: |
@@ -67,7 +105,7 @@ runs:
           const newIssuesFile = `${process.env.INPUT_BUILD_PATH}/clang-tidy-new-issues.txt`;
 
           let totalIssues = 0;
-          const checkCounts = {};
+          const checkCounts = Object.create(null);
           let newIssueLines = [];
 
           if (fs.existsSync(fixesFile)) {
