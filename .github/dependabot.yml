@@ -19,3 +19,7 @@ updates:
     directory: "/.github/format-tools"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/.github/comment-tools"
+    schedule:
+      interval: "weekly"
