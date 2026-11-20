@@ -26,7 +26,11 @@ runs:
       run: |
         path=$(mktemp -d "$RUNNER_TEMP/clang-tidy-report.XXXXXX")
         printf 'path=%s\n' "$path" >> "$GITHUB_OUTPUT"
-        printf 'python=%s\n' "$(command -v python3)" >> "$GITHUB_OUTPUT"
+        if python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' 2>/dev/null; then
+          printf 'python=%s\n' "$(command -v python3)" >> "$GITHUB_OUTPUT"
+        else
+          printf 'python=\n' >> "$GITHUB_OUTPUT"
+        fi
     - name: Download artifacts
       id: download
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

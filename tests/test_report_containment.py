@@ -14,6 +14,35 @@ from pathlib import Path
 class ReportContainmentTests(unittest.TestCase):
     """Check partial downloads, symlinks, oversized reports, and PR injection."""
 
+    def test_python_path_is_set_only_for_supported_interpreters(self) -> None:
+        """Let the inline-comment action provision Python when the runner is too old."""
+        action = Path(__file__).parents[1] / "action.yaml"
+        scripts = re.findall(r"^      run: \|\n((?:        .*\n|\n)+)", action.read_text(), re.M)
+        script = textwrap.dedent(scripts[0])
+        for exit_code, expected_python in [("0", True), ("1", False)]:
+            with (
+                self.subTest(exit_code=exit_code),
+                tempfile.TemporaryDirectory(prefix="python-path-test-") as tmp,
+            ):
+                root = Path(tmp)
+                python = root / "python3"
+                python.write_text(f"#!/bin/sh\nexit {exit_code}\n")
+                python.chmod(0o755)
+                output = root / "outputs"
+                result = subprocess.run(
+                    ["bash", "-e", "-c", script],
+                    capture_output=True,
+                    text=True,
+                    env={
+                        "PATH": f"{tmp}:{os.environ['PATH']}",
+                        "RUNNER_TEMP": tmp,
+                        "GITHUB_OUTPUT": str(output),
+                    },
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = f"python={python if expected_python else ''}\n"
+                self.assertIn(expected, output.read_text())
+
     def test_validation(self) -> None:
         """Run the shipped validation program with isolated artifact fixtures."""
         action = Path(__file__).parents[1] / "action.yaml"
